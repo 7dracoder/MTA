@@ -41,6 +41,12 @@ interface StatusDashboardProps {
   error: string | null
   lastUpdated: Date | null
   onRetry: () => void
+  /** When false, favorite controls are disabled and a hint is shown. */
+  isAuthenticated: boolean
+  favoriteRouteIds: string[]
+  onToggleFavorite: (routeId: string) => void
+  favoritesError: string | null
+  onClearFavoritesError: () => void
 }
 
 export function StatusDashboard({
@@ -49,12 +55,20 @@ export function StatusDashboard({
   error,
   lastUpdated,
   onRetry,
+  isAuthenticated,
+  favoriteRouteIds,
+  onToggleFavorite,
+  favoritesError,
+  onClearFavoritesError,
 }: StatusDashboardProps) {
+  const favoriteSet = new Set(favoriteRouteIds)
   const byMode = new Map<TransitMode, RouteStatus[]>()
   for (const m of MODE_ORDER) byMode.set(m, [])
   for (const s of statuses) {
-    const list = byMode.get(s.mode) ?? byMode.get('unknown')!
-    list.push(s)
+    const list = byMode.get(s.mode) ?? byMode.get("unknown")
+    if (list !== undefined) {
+      list.push(s)
+    }
   }
 
   return (
@@ -73,6 +87,26 @@ export function StatusDashboard({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {!isAuthenticated ? (
+          <p className="mb-3 text-xs text-slate-500">
+            Sign in to star routes and get in-app alerts when their status changes.
+          </p>
+        ) : null}
+        {favoritesError !== null ? (
+          <div
+            className="mb-4 rounded-lg border border-rose-800/60 bg-rose-950/40 px-3 py-2 text-xs text-rose-100"
+            role="alert"
+          >
+            <p>{favoritesError}</p>
+            <button
+              type="button"
+              onClick={onClearFavoritesError}
+              className="mt-2 text-[10px] font-semibold text-sky-400 hover:text-sky-300"
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
         {error ? (
           <div
             className="mb-4 rounded-lg border border-rose-800/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-100"
@@ -120,6 +154,34 @@ export function StatusDashboard({
                         key={`${mode}-${row.route_id}-${idx}`}
                         className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-700/60 bg-slate-950/40 px-3 py-2.5"
                       >
+                        <button
+                          type="button"
+                          disabled={!isAuthenticated}
+                          onClick={() => {
+                            onClearFavoritesError()
+                            void onToggleFavorite(row.route_id)
+                          }}
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm font-bold transition-colors ${
+                            favoriteSet.has(row.route_id)
+                              ? "border-amber-500/80 bg-amber-900/40 text-amber-100"
+                              : "border-slate-600 bg-slate-800/80 text-slate-400 hover:border-slate-500"
+                          } disabled:cursor-not-allowed disabled:opacity-40`}
+                          title={
+                            isAuthenticated
+                              ? favoriteSet.has(row.route_id)
+                                ? "Remove from favorites"
+                                : "Add to favorites"
+                              : "Sign in to save favorites"
+                          }
+                          aria-pressed={favoriteSet.has(row.route_id)}
+                          aria-label={
+                            favoriteSet.has(row.route_id)
+                              ? `Unfavorite route ${row.route_id}`
+                              : `Favorite route ${row.route_id}`
+                          }
+                        >
+                          {favoriteSet.has(row.route_id) ? "★" : "☆"}
+                        </button>
                         <span className="flex h-8 min-w-8 items-center justify-center rounded-md bg-slate-800 px-2 text-sm font-bold text-slate-100">
                           {row.route_id}
                         </span>
