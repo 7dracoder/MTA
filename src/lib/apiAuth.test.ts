@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
-  fetchFavorites,
+  fetchFavoritesList,
   fetchJsonWithAuth,
-  parseAlertPreferencesPayload,
-  parseFavoritesPayload,
+  parseFavoriteSingleResponse,
+  parseFavoritesListResponse,
   UserApiError,
 } from "./apiAuth"
 
@@ -11,63 +11,69 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe("parseFavoritesPayload", () => {
-  it("accepts a valid route_ids array", () => {
-    const result = parseFavoritesPayload({ route_ids: ["A", "B"] })
-    expect(result).toEqual({ route_ids: ["A", "B"] })
+describe("parseFavoritesListResponse", () => {
+  it("parses a valid list", () => {
+    const result = parseFavoritesListResponse({
+      data: [
+        {
+          id: 1,
+          item_type: "route",
+          item_id: "A",
+          item_name: "Test",
+          alerts_enabled: true,
+          created_at: "2026-01-01T00:00:00",
+        },
+      ],
+    })
+    expect(result).toHaveLength(1)
+    expect(result?.[0]?.item_id).toBe("A")
+    expect(result?.[0]?.alerts_enabled).toBe(true)
   })
 
-  it("rejects non-objects", () => {
-    expect(parseFavoritesPayload(null)).toBeNull()
-    expect(parseFavoritesPayload("x")).toBeNull()
-    expect(parseFavoritesPayload([1, 2])).toBeNull()
-  })
-
-  it("rejects missing or invalid route_ids", () => {
-    expect(parseFavoritesPayload({})).toBeNull()
-    expect(parseFavoritesPayload({ route_ids: "A" })).toBeNull()
-    expect(parseFavoritesPayload({ route_ids: [1, "B"] })).toBeNull()
+  it("rejects invalid rows", () => {
+    expect(parseFavoritesListResponse({ data: [{}] })).toBeNull()
+    expect(parseFavoritesListResponse({ routes: [] })).toBeNull()
   })
 })
 
-describe("parseAlertPreferencesPayload", () => {
-  it("accepts valid booleans", () => {
-    const result = parseAlertPreferencesPayload({
-      notify_minor: true,
-      notify_major: false,
+describe("parseFavoriteSingleResponse", () => {
+  it("parses wrapped data", () => {
+    const row = parseFavoriteSingleResponse({
+      data: {
+        id: 2,
+        item_type: "route",
+        item_id: "1",
+        item_name: "1 Train",
+        alerts_enabled: false,
+        created_at: "2026-01-02T00:00:00",
+      },
     })
-    expect(result).toEqual({ notify_minor: true, notify_major: false })
-  })
-
-  it("rejects non-boolean fields", () => {
-    expect(
-      parseAlertPreferencesPayload({ notify_minor: "yes", notify_major: false }),
-    ).toBeNull()
-    expect(parseAlertPreferencesPayload({ notify_minor: true })).toBeNull()
+    expect(row?.id).toBe(2)
+    expect(row?.item_id).toBe("1")
   })
 })
 
 describe("fetchJsonWithAuth", () => {
-  it("throws UserApiError with status and message on failure", async () => {
+  it("throws UserApiError reading backend error field", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         ok: false,
         status: 401,
         statusText: "Unauthorized",
-        text: async () => '{"message":"bad token"}',
+        text: async () => '{"error":"Invalid or expired token"}',
       }),
     )
 
-    await expect(fetchJsonWithAuth("/api/me/favorites", "tok")).rejects.toThrow(UserApiError)
+    await expect(fetchJsonWithAuth("/api/favorites", "tok")).rejects.toThrow(UserApiError)
 
     try {
-      await fetchJsonWithAuth("/api/me/favorites", "tok")
+      await fetchJsonWithAuth("/api/favorites", "tok")
     } catch (e) {
       expect(e).toBeInstanceOf(UserApiError)
       if (e instanceof UserApiError) {
         expect(e.status).toBe(401)
-        expect(e.message).toContain("bad token")
+        expect(e.message).toBe("Invalid or expired token")
       }
     }
   })
@@ -78,28 +84,41 @@ describe("fetchJsonWithAuth", () => {
       vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        text: async () => '{"route_ids":["1"]}',
+        text: async () => '{"data":[]}',
       }),
     )
 
-    const body = await fetchJsonWithAuth("/api/me/favorites", "tok")
-    expect(body).toEqual({ route_ids: ["1"] })
+    const body = await fetchJsonWithAuth("/api/favorites", "tok")
+    expect(body).toEqual({ data: [] })
   })
 })
 
-describe("fetchFavorites", () => {
-  it("returns favorites when response is valid", async () => {
+describe("fetchFavoritesList", () => {
+  it("returns records when response is valid", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        text: async () => '{"route_ids":["M1","M2"]}',
+        text: async () =>
+          JSON.stringify({
+            data: [
+              {
+                id: 1,
+                item_type: "route",
+                item_id: "M1",
+                item_name: "M1",
+                alerts_enabled: false,
+                created_at: "2026-01-01T00:00:00",
+              },
+            ],
+          }),
       }),
     )
 
-    const data = await fetchFavorites("tok")
-    expect(data.route_ids).toEqual(["M1", "M2"])
+    const data = await fetchFavoritesList("tok")
+    expect(data).toHaveLength(1)
+    expect(data[0]?.item_id).toBe("M1")
   })
 
   it("throws UserApiError when body shape is wrong", async () => {
@@ -112,6 +131,6 @@ describe("fetchFavorites", () => {
       }),
     )
 
-    await expect(fetchFavorites("tok")).rejects.toThrow(UserApiError)
+    await expect(fetchFavoritesList("tok")).rejects.toThrow(UserApiError)
   })
 })

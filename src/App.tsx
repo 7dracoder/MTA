@@ -1,12 +1,10 @@
 import { useCallback, useMemo, useState } from "react"
-import { AlertPreferencesPanel } from "./components/AlertPreferencesPanel"
 import { AuthPanel } from "./components/AuthPanel"
 import { FavoriteAlertsBanner } from "./components/FavoriteAlertsBanner"
 import { RouteFilter } from "./components/RouteFilter"
 import { StatusDashboard } from "./components/StatusDashboard"
 import { TransitMap } from "./components/TransitMap"
 import { useAuth } from "./contexts/AuthContext"
-import { useAlertPreferences } from "./hooks/useAlertPreferences"
 import { useFavoriteStatusAlerts } from "./hooks/useFavoriteStatusAlerts"
 import { useFavorites } from "./hooks/useFavorites"
 import { useServiceStatus } from "./hooks/useServiceStatus"
@@ -48,24 +46,25 @@ export default function App() {
 
   const {
     routeIds: favoriteRouteIds,
+    favoriteByRouteId,
     error: favoritesError,
     toggleFavorite,
+    toggleRouteAlerts,
     clearError: clearFavoritesError,
   } = useFavorites(userId, getIdToken)
 
-  const {
-    preferences: alertPreferences,
-    loading: alertPrefsLoading,
-    error: alertPrefsError,
-    setNotifyMinor,
-    setNotifyMajor,
-    clearError: clearAlertPrefsError,
-  } = useAlertPreferences(userId, getIdToken)
+  const alertsEnabledByRouteId = useMemo(() => {
+    const m = new Map<string, boolean>()
+    favoriteByRouteId.forEach((v, routeId) => {
+      m.set(routeId, v.alerts_enabled)
+    })
+    return m
+  }, [favoriteByRouteId])
 
   const { alerts: favoriteAlerts, dismissAlert } = useFavoriteStatusAlerts(
     statuses,
     favoriteRouteIds,
-    alertPreferences,
+    alertsEnabledByRouteId,
   )
 
   const [selectedRouteIds, setSelectedRouteIds] = useState<string[]>([])
@@ -91,13 +90,6 @@ export default function App() {
   }, [])
 
   const clearFilters = useCallback(() => setSelectedRouteIds([]), [])
-
-  const handleToggleFavorite = useCallback(
-    (routeId: string) => {
-      void toggleFavorite(routeId)
-    },
-    [toggleFavorite],
-  )
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -137,16 +129,6 @@ export default function App() {
             onToggleRoute={toggleRoute}
             onClear={clearFilters}
           />
-          {isAuthenticated ? (
-            <AlertPreferencesPanel
-              preferences={alertPreferences}
-              loading={alertPrefsLoading}
-              error={alertPrefsError}
-              onClearError={clearAlertPrefsError}
-              onChangeMinor={setNotifyMinor}
-              onChangeMajor={setNotifyMajor}
-            />
-          ) : null}
           <StatusDashboard
             statuses={filteredStatuses}
             loading={statusLoading}
@@ -155,7 +137,13 @@ export default function App() {
             onRetry={refetchStatus}
             isAuthenticated={isAuthenticated}
             favoriteRouteIds={favoriteRouteIds}
-            onToggleFavorite={handleToggleFavorite}
+            favoriteByRouteId={favoriteByRouteId}
+            onToggleFavorite={(routeId, displayName) => {
+              void toggleFavorite(routeId, displayName)
+            }}
+            onToggleRouteAlerts={(favoriteId, enabled) => {
+              void toggleRouteAlerts(favoriteId, enabled)
+            }}
             favoritesError={favoritesError}
             onClearFavoritesError={clearFavoritesError}
           />

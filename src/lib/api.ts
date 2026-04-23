@@ -84,7 +84,7 @@ function toRouteStatus(raw: Record<string, unknown>): RouteStatus | null {
   return {
     route_id,
     route_short_name: pickString(raw.route_short_name, raw.short_name),
-    route_long_name: pickString(raw.route_long_name, raw.long_name),
+    route_long_name: pickString(raw.route_long_name, raw.long_name, raw.route_name),
     mode: inferMode(raw),
     summary,
     severity: inferSeverity(raw),

@@ -1,4 +1,8 @@
-import type { AlertPreferencesPayload, FavoritesPayload } from "../types/userPreferences"
+/**
+ * Authenticated REST calls to Flask user endpoints using a Firebase ID token.
+ * Matches merged backend: `/api/favorites` (not `/api/me/...`).
+ */
+import type { FavoriteItemType, FavoriteRecord } from "../types/userPreferences"
 
 function getBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_API_BASE_URL
@@ -27,40 +31,72 @@ async function readJsonBody(res: Response): Promise<unknown | null> {
   }
 }
 
-/**
- * Parses a favorites response body into `{ route_ids }` or returns null if invalid.
- */
-export function parseFavoritesPayload(json: unknown): FavoritesPayload | null {
-  if (!isRecord(json)) {
+function parseFavoriteRecord(raw: unknown): FavoriteRecord | null {
+  if (!isRecord(raw)) {
     return null
   }
-  const ids = json.route_ids
-  if (!Array.isArray(ids)) {
+  const id = raw.id
+  const item_type = raw.item_type
+  const item_id = raw.item_id
+  const item_name = raw.item_name
+  const alerts_enabled = raw.alerts_enabled
+  const created_at = raw.created_at
+  if (typeof id !== "number" || !Number.isInteger(id)) {
     return null
   }
-  const route_ids: string[] = []
-  for (const item of ids) {
-    if (typeof item !== "string") {
-      return null
-    }
-    route_ids.push(item)
+  if (item_type !== "route" && item_type !== "station") {
+    return null
   }
-  return { route_ids }
+  if (typeof item_id !== "string" || typeof item_name !== "string") {
+    return null
+  }
+  if (typeof alerts_enabled !== "boolean") {
+    return null
+  }
+  if (typeof created_at !== "string") {
+    return null
+  }
+  return {
+    id,
+    item_type,
+    item_id,
+    item_name,
+    alerts_enabled,
+    created_at,
+  }
 }
 
 /**
- * Parses alert preferences JSON into booleans or returns null if invalid.
+ * Parses `GET /api/favorites` body: `{ "data": FavoriteRecord[] }`.
  */
-export function parseAlertPreferencesPayload(json: unknown): AlertPreferencesPayload | null {
+export function parseFavoritesListResponse(json: unknown): FavoriteRecord[] | null {
   if (!isRecord(json)) {
     return null
   }
-  const minor = json.notify_minor
-  const major = json.notify_major
-  if (typeof minor !== "boolean" || typeof major !== "boolean") {
+  const data = json.data
+  if (!Array.isArray(data)) {
     return null
   }
-  return { notify_minor: minor, notify_major: major }
+  const out: FavoriteRecord[] = []
+  for (const row of data) {
+    const rec = parseFavoriteRecord(row)
+    if (rec === null) {
+      return null
+    }
+    out.push(rec)
+  }
+  return out
+}
+
+/**
+ * Parses a single-favorite response: `{ "data": FavoriteRecord }` (e.g. POST 201).
+ */
+export function parseFavoriteSingleResponse(json: unknown): FavoriteRecord | null {
+  if (!isRecord(json)) {
+    return null
+  }
+  const data = json.data
+  return parseFavoriteRecord(data)
 }
 
 export class UserApiError extends Error {
@@ -73,15 +109,30 @@ export class UserApiError extends Error {
   }
 }
 
+function errorMessageFromBody(body: unknown, fallback: string): string {
+  if (body !== null && isRecord(body)) {
+    if (typeof body.message === "string" && body.message.length > 0) {
+      return body.message
+    }
+    if (typeof body.error === "string" && body.error.length > 0) {
+      return body.error
+    }
+  }
+  if (typeof body === "string" && body.length > 0) {
+    return body
+  }
+  return fallback
+}
+
 /**
- * Performs fetch with Bearer token and returns parsed JSON on success.
+ * Performs fetch with Bearer token and returns parsed JSON on success (may be null for empty 200).
  * @throws UserApiError on non-OK HTTP status.
  */
 export async function fetchJsonWithAuth(
   path: string,
   idToken: string,
   init?: RequestInit,
-): Promise<unknown> {
+): Promise<unknown | null> {
   const url = `${getBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`
   const res = await fetch(url, {
     ...init,
@@ -95,12 +146,10 @@ export async function fetchJsonWithAuth(
   const body = await readJsonBody(res)
 
   if (!res.ok) {
-    const detail =
-      body !== null && isRecord(body) && typeof body.message === "string"
-        ? body.message
-        : typeof body === "string"
-          ? body
-          : `HTTP ${res.status} ${res.statusText}`
+    const detail = errorMessageFromBody(
+      body,
+      `HTTP ${res.status} ${res.statusText}`,
+    )
     throw new UserApiError(res.status, detail)
   }
 
@@ -108,55 +157,66 @@ export async function fetchJsonWithAuth(
 }
 
 /**
- * Loads the current user's favorite GTFS route IDs from the backend.
+ * Loads all favorites for the signed-in user.
  */
-export async function fetchFavorites(idToken: string): Promise<FavoritesPayload> {
-  const json = await fetchJsonWithAuth("/api/me/favorites", idToken, { method: "GET" })
-  const parsed = parseFavoritesPayload(json)
+export async function fetchFavoritesList(idToken: string): Promise<FavoriteRecord[]> {
+  const json = await fetchJsonWithAuth("/api/favorites", idToken, { method: "GET" })
+  const parsed = parseFavoritesListResponse(json)
   if (parsed === null) {
-    throw new UserApiError(502, "Invalid favorites response from server.")
+    throw new UserApiError(502, "Invalid favorites list response from server.")
   }
   return parsed
 }
 
+export interface PostFavoriteBody {
+  item_type: FavoriteItemType
+  item_id: string
+  item_name: string
+}
+
 /**
- * Replaces the user's favorite route list on the server.
+ * Adds a favorite. Returns the created row (201).
  */
-export async function putFavorites(idToken: string, payload: FavoritesPayload): Promise<void> {
-  const body = JSON.stringify({ route_ids: payload.route_ids })
-  await fetchJsonWithAuth("/api/me/favorites", idToken, {
-    method: "PUT",
+export async function postFavorite(idToken: string, body: PostFavoriteBody): Promise<FavoriteRecord> {
+  const json = await fetchJsonWithAuth("/api/favorites", idToken, {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
-    body,
+    body: JSON.stringify({
+      item_type: body.item_type,
+      item_id: body.item_id,
+      item_name: body.item_name,
+    }),
   })
-}
-
-/**
- * Loads alert preference toggles for the signed-in user.
- */
-export async function fetchAlertPreferences(idToken: string): Promise<AlertPreferencesPayload> {
-  const json = await fetchJsonWithAuth("/api/me/alert-preferences", idToken, { method: "GET" })
-  const parsed = parseAlertPreferencesPayload(json)
+  const parsed = parseFavoriteSingleResponse(json)
   if (parsed === null) {
-    throw new UserApiError(502, "Invalid alert-preferences response from server.")
+    throw new UserApiError(502, "Invalid create-favorite response from server.")
   }
   return parsed
 }
 
 /**
- * Saves alert preference toggles for the signed-in user.
+ * Removes a favorite by its database id.
  */
-export async function putAlertPreferences(
+export async function deleteFavorite(idToken: string, favoriteId: number): Promise<void> {
+  await fetchJsonWithAuth(`/api/favorites/${favoriteId}`, idToken, { method: "DELETE" })
+}
+
+/**
+ * Enables or disables in-app alerts for one favorite row.
+ */
+export async function patchFavoriteAlerts(
   idToken: string,
-  payload: AlertPreferencesPayload,
-): Promise<void> {
-  const body = JSON.stringify({
-    notify_minor: payload.notify_minor,
-    notify_major: payload.notify_major,
-  })
-  await fetchJsonWithAuth("/api/me/alert-preferences", idToken, {
-    method: "PUT",
+  favoriteId: number,
+  alerts_enabled: boolean,
+): Promise<FavoriteRecord> {
+  const json = await fetchJsonWithAuth(`/api/favorites/${favoriteId}/alerts`, idToken, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body,
+    body: JSON.stringify({ alerts_enabled }),
   })
+  const parsed = parseFavoriteSingleResponse(json)
+  if (parsed === null) {
+    throw new UserApiError(502, "Invalid patch-alerts response from server.")
+  }
+  return parsed
 }

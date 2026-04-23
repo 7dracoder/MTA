@@ -29,8 +29,8 @@ The app calls `GET /api/status` and `GET /api/vehicles` and polls every 60 secon
 ### Authentication and personalization
 
 - **Sign in** (email/password) uses **Firebase Authentication** on the client.
-- **Favorites** (star on each route in the service status list) and **alert preferences** are loaded and saved via Flask using a **Firebase ID token** in the `Authorization: Bearer` header.
-- Until the backend implements those routes, the dashboard still works; favorites/preferences show a clear error hint. See **[docs/BACKEND_INTEGRATION.md](docs/BACKEND_INTEGRATION.md)** for the exact API contract.
+- **Favorites** use Flask **`GET` / `POST` / `DELETE` `/api/favorites`** with a **Firebase ID token** (`Authorization: Bearer …`). Starring sends `item_type: "route"`, `item_id`, and `item_name`.
+- **Per-route alerts**: for starred routes, enable **Alerts** to receive in-app banners when that route’s status text changes (backed by **`PATCH` `/api/favorites/:id/alerts`**). See **[docs/BACKEND_INTEGRATION.md](docs/BACKEND_INTEGRATION.md)** for the full contract.
 
 ## Tests
 
