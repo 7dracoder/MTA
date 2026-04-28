@@ -8,7 +8,7 @@
  *   is rendered by React.
  */
 import L from 'leaflet'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { MapContainer, TileLayer } from 'react-leaflet'
 import { getRouteIcon } from '../lib/transitIcons'
 import type { VehiclePosition } from '../types/transit'

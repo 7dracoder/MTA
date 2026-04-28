@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStations, useTripPlanner } from '../hooks/useTripPlanner'
 import type { RouteInfo } from '../hooks/useTripPlanner'
 import { estimateCrowd, crowdColor } from '../lib/crowdEstimator'
