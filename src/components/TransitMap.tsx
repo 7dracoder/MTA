@@ -1,33 +1,20 @@
+/**
+ * TransitMap — high-performance map using native Leaflet layer management.
+ *
+ * Why not React-Leaflet <Marker> for each vehicle:
+ *   600+ React components re-rendering every 60s is slow. Instead we manage
+ *   a single Leaflet LayerGroup imperatively via useEffect, bypassing React
+ *   reconciliation entirely for the marker layer. Only the MapContainer shell
+ *   is rendered by React.
+ */
 import L from 'leaflet'
-import { useEffect } from 'react'
-import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet'
-import { fixLeafletDefaultIcons } from '../lib/fixLeafletIcons'
+import { useEffect, useRef, useState } from 'react'
+import { MapContainer, TileLayer } from 'react-leaflet'
+import { getRouteIcon } from '../lib/transitIcons'
 import type { VehiclePosition } from '../types/transit'
 
 const NYC_CENTER: [number, number] = [40.7128, -74.006]
 const DEFAULT_ZOOM = 11
-
-let iconsFixed = false
-
-function ensureIconsFixed() {
-  if (!iconsFixed) {
-    fixLeafletDefaultIcons()
-    iconsFixed = true
-  }
-}
-
-function MapFitBounds({ vehicles }: { vehicles: VehiclePosition[] }) {
-  const map = useMap()
-  useEffect(() => {
-    if (vehicles.length === 0) {
-      map.setView(NYC_CENTER, DEFAULT_ZOOM)
-      return
-    }
-    const bounds = L.latLngBounds(vehicles.map((v) => [v.lat, v.lon]))
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 })
-  }, [map, vehicles])
-  return null
-}
 
 interface TransitMapProps {
   vehicles: VehiclePosition[]
@@ -37,69 +24,105 @@ interface TransitMapProps {
 }
 
 export function TransitMap({ vehicles, loading, error, onRetry }: TransitMapProps) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<L.Map | null>(null)
+  const layerRef = useRef<L.LayerGroup | null>(null)
+  const fittedRef = useRef(false)
+
+  // Force Leaflet to redraw when the wrapper resizes
   useEffect(() => {
-    ensureIconsFixed()
+    const el = wrapRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      setTimeout(() => mapRef.current?.invalidateSize(), 0)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
 
+  // Update markers imperatively — no React reconciliation
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    // Create layer group once
+    if (!layerRef.current) {
+      layerRef.current = L.layerGroup().addTo(map)
+    }
+    const layer = layerRef.current
+    layer.clearLayers()
+
+    if (vehicles.length === 0) return
+
+    // Fit bounds only on first load
+    if (!fittedRef.current) {
+      const bounds = L.latLngBounds(vehicles.map((v) => [v.lat, v.lon]))
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 })
+      fittedRef.current = true
+    }
+
+    // Add all markers natively — no React overhead
+    for (const v of vehicles) {
+      const marker = L.marker([v.lat, v.lon], { icon: getRouteIcon(v.route_id) })
+      marker.bindPopup(
+        `<div style="font-family:system-ui,sans-serif;min-width:130px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px">${v.route_id} Train</div>
+          ${v.vehicle_id ? `<div style="font-size:12px;color:#555">Vehicle ${v.vehicle_id}</div>` : ''}
+          <div style="font-size:11px;color:#888;margin-top:4px">${v.lat.toFixed(5)}, ${v.lon.toFixed(5)}</div>
+        </div>`,
+        { maxWidth: 200 }
+      )
+      layer.addLayer(marker)
+    }
+  }, [vehicles])
+
   return (
-    <section
-      className="flex h-full min-h-[320px] flex-col rounded-xl border border-slate-700/80 bg-slate-900/60 shadow-lg backdrop-blur-sm lg:min-h-0"
-      aria-label="Live vehicle map"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/80 px-4 py-3">
-        <h2 className="text-base font-semibold text-slate-100">Live vehicles</h2>
-        <span className="text-xs text-slate-500">
-          {loading ? 'Updating…' : `${vehicles.length} on map`}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0f1623', overflow: 'hidden' }}>
+
+      {/* Panel header */}
+      <div style={{ height: 36, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', borderBottom: '1px solid #1e2d45' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+          Live Vehicles
+        </span>
+        <span style={{ fontSize: 11, color: '#334155' }}>
+          {loading ? 'Updating' : `${vehicles.length} active`}
         </span>
       </div>
-      {error ? (
-        <div
-          className="mx-4 mt-3 rounded-lg border border-rose-800/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-100"
-          role="alert"
-        >
-          <p className="font-medium">Could not load vehicles</p>
-          <p className="mt-1 text-rose-200/90">{error}</p>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-2 text-xs font-semibold text-sky-400 hover:text-sky-300"
-          >
-            Retry
-          </button>
+
+      {error && (
+        <div style={{ flexShrink: 0, background: '#2d0a0a', borderBottom: '1px solid #7f1d1d', padding: '8px 16px', fontSize: 12, color: '#fca5a5' }}>
+          Could not load vehicles. {error}
+          <button type="button" onClick={onRetry} style={{ marginLeft: 8, color: '#60a5fa', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11 }}>Retry</button>
         </div>
-      ) : null}
-      <div className="relative min-h-[280px] flex-1 p-3">
-        {loading && vehicles.length === 0 ? (
-          <div
-            className="absolute inset-3 z-[400] flex items-center justify-center rounded-xl bg-slate-950/70 text-sm text-slate-400"
-            aria-busy="true"
-          >
-            Loading map…
+      )}
+
+      {/* Map wrapper — flex:1, ResizeObserver measures real px height */}
+      <div ref={wrapRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+        {loading && vehicles.length === 0 && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(10,14,26,0.8)', fontSize: 13, color: '#64748b' }}>
+            Loading map
           </div>
-        ) : null}
+        )}
+
         <MapContainer
           center={NYC_CENTER}
           zoom={DEFAULT_ZOOM}
-          className="h-full min-h-[260px] w-full"
+          style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }}
           scrollWheelZoom
+          ref={(m) => {
+            if (m && !mapRef.current) {
+              mapRef.current = m
+              setTimeout(() => m.invalidateSize(), 150)
+            }
+          }}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <MapFitBounds vehicles={vehicles} />
-          {vehicles.map((v) => (
-            <Marker key={v.vehicle_id ?? `${v.route_id}-${v.lat}-${v.lon}`} position={[v.lat, v.lon]}>
-              <Popup>
-                <span className="font-semibold">Route {v.route_id}</span>
-                {v.vehicle_id ? (
-                  <div className="text-xs text-slate-600">Vehicle {v.vehicle_id}</div>
-                ) : null}
-              </Popup>
-            </Marker>
-          ))}
+          {/* No React markers here — managed imperatively in useEffect above */}
         </MapContainer>
       </div>
-    </section>
+    </div>
   )
 }

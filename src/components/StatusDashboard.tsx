@@ -1,38 +1,13 @@
 import type { RouteStatus, TransitMode } from '../types/transit'
 
 const MODE_ORDER: TransitMode[] = ['subway', 'bus', 'rail', 'unknown']
+const MODE_LABEL: Record<TransitMode, string> = { subway: 'Subway', bus: 'Bus', rail: 'Rail', unknown: 'Other' }
 
-const MODE_LABEL: Record<TransitMode, string> = {
-  subway: 'Subway',
-  bus: 'Bus',
-  rail: 'Rail',
-  unknown: 'Other',
-}
-
-function severityClasses(severity: RouteStatus['severity']): string {
-  switch (severity) {
-    case 'good':
-      return 'bg-emerald-900/50 text-emerald-200 ring-emerald-700/60'
-    case 'minor':
-      return 'bg-amber-900/50 text-amber-200 ring-amber-700/60'
-    case 'major':
-      return 'bg-rose-900/50 text-rose-200 ring-rose-700/60'
-    default:
-      return 'bg-slate-700/50 text-slate-200 ring-slate-600/60'
-  }
-}
-
-function severityLabel(severity: RouteStatus['severity']): string {
-  switch (severity) {
-    case 'good':
-      return 'Good service'
-    case 'minor':
-      return 'Minor issues'
-    case 'major':
-      return 'Major disruption'
-    default:
-      return 'Status'
-  }
+const SEVERITY_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+  good:    { bg: '#052e16', color: '#4ade80', label: 'Good Service' },
+  minor:   { bg: '#2d1a00', color: '#fb923c', label: 'Minor Issues' },
+  major:   { bg: '#2d0a0a', color: '#f87171', label: 'Disruption' },
+  unknown: { bg: '#1e293b', color: '#94a3b8', label: 'Unknown' },
 }
 
 interface StatusDashboardProps {
@@ -41,10 +16,8 @@ interface StatusDashboardProps {
   error: string | null
   lastUpdated: Date | null
   onRetry: () => void
-  /** When false, favorite controls are disabled and a hint is shown. */
   isAuthenticated: boolean
   favoriteRouteIds: string[]
-  /** DB id and alerts flag for each favorited route (from GET /api/favorites). */
   favoriteByRouteId: ReadonlyMap<string, { id: number; alerts_enabled: boolean }>
   onToggleFavorite: (routeId: string, displayName: string) => void
   onToggleRouteAlerts: (favoriteId: number, enabled: boolean) => void
@@ -53,189 +26,147 @@ interface StatusDashboardProps {
 }
 
 export function StatusDashboard({
-  statuses,
-  loading,
-  error,
-  lastUpdated,
-  onRetry,
-  isAuthenticated,
-  favoriteRouteIds,
-  favoriteByRouteId,
-  onToggleFavorite,
-  onToggleRouteAlerts,
-  favoritesError,
-  onClearFavoritesError,
+  statuses, loading, error, lastUpdated, onRetry,
+  isAuthenticated, favoriteRouteIds, favoriteByRouteId,
+  onToggleFavorite, onToggleRouteAlerts,
+  favoritesError, onClearFavoritesError,
 }: StatusDashboardProps) {
   const favoriteSet = new Set(favoriteRouteIds)
   const byMode = new Map<TransitMode, RouteStatus[]>()
   for (const m of MODE_ORDER) byMode.set(m, [])
   for (const s of statuses) {
-    const list = byMode.get(s.mode) ?? byMode.get("unknown")
-    if (list !== undefined) {
-      list.push(s)
-    }
+    const list = byMode.get(s.mode) ?? byMode.get('unknown')!
+    list.push(s)
   }
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-700/80 bg-slate-900/60 shadow-lg backdrop-blur-sm"
+      style={{ background: '#0f1623', border: '1px solid #1e2d45', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
       aria-label="Service status"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/80 px-4 py-3">
-        <h2 className="text-base font-semibold text-slate-100">Service status</h2>
-        <div className="flex items-center gap-3 text-xs text-slate-500">
-          {lastUpdated ? (
-            <span>Updated {lastUpdated.toLocaleTimeString()}</span>
-          ) : null}
-          {loading && statuses.length > 0 ? <span className="text-sky-400">Refreshing…</span> : null}
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid #1e2d45', flexShrink: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+          Service Status
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: '#334155' }}>
+          {lastUpdated && <span>Updated {lastUpdated.toLocaleTimeString()}</span>}
+          {loading && statuses.length > 0 && <span style={{ color: '#3b82f6' }}>Refreshing</span>}
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {!isAuthenticated ? (
-          <p className="mb-3 text-xs text-slate-500">
-            Sign in to star routes. For starred routes, turn on <strong className="text-slate-400">Alerts</strong> to
-            see in-app banners when MTA status text changes (no push notifications).
+      {/* Body */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+
+        {!isAuthenticated && (
+          <p style={{ fontSize: 11, color: '#475569', marginBottom: 10, lineHeight: 1.5 }}>
+            Sign in to save favorite routes and enable in-app alerts.
           </p>
-        ) : null}
-        {favoritesError !== null ? (
-          <div
-            className="mb-4 rounded-lg border border-rose-800/60 bg-rose-950/40 px-3 py-2 text-xs text-rose-100"
-            role="alert"
-          >
-            <p>{favoritesError}</p>
-            <button
-              type="button"
-              onClick={onClearFavoritesError}
-              className="mt-2 text-[10px] font-semibold text-sky-400 hover:text-sky-300"
-            >
-              Dismiss
-            </button>
-          </div>
-        ) : null}
-        {error ? (
-          <div
-            className="mb-4 rounded-lg border border-rose-800/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-100"
-            role="alert"
-          >
-            <p className="font-medium">Could not load status</p>
-            <p className="mt-1 text-rose-200/90">{error}</p>
-            <button
-              type="button"
-              onClick={onRetry}
-              className="mt-2 text-xs font-semibold text-sky-400 hover:text-sky-300"
-            >
-              Retry
-            </button>
-          </div>
-        ) : null}
+        )}
 
-        {loading && statuses.length === 0 ? (
-          <ul className="space-y-3" aria-busy="true">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <li
-                key={i}
-                className="h-14 animate-pulse rounded-lg bg-slate-800/80"
-              />
+        {favoritesError && (
+          <div style={{ background: '#2d0a0a', border: '1px solid #7f1d1d', padding: '8px 12px', marginBottom: 10, fontSize: 12, color: '#fca5a5' }}>
+            {favoritesError}
+            <button type="button" onClick={onClearFavoritesError} style={{ marginLeft: 8, color: '#60a5fa', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11 }}>Dismiss</button>
+          </div>
+        )}
+
+        {error && (
+          <div style={{ background: '#2d0a0a', border: '1px solid #7f1d1d', padding: '8px 12px', marginBottom: 10, fontSize: 12, color: '#fca5a5' }}>
+            <strong>Could not load status.</strong> {error}
+            <button type="button" onClick={onRetry} style={{ marginLeft: 8, color: '#60a5fa', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11 }}>Retry</button>
+          </div>
+        )}
+
+        {loading && statuses.length === 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[1,2,3,4,5].map(i => (
+              <div key={i} style={{ height: 44, background: '#1e2d45', animation: 'pulse 1.5s infinite' }} />
             ))}
-          </ul>
-        ) : null}
+          </div>
+        )}
 
-        {!loading && !error && statuses.length === 0 ? (
-          <p className="text-sm text-slate-500">No status rows returned. Is the API running?</p>
-        ) : null}
+        {!loading && !error && statuses.length === 0 && (
+          <p style={{ fontSize: 13, color: '#475569' }}>No data. Is the API running?</p>
+        )}
 
-        {statuses.length > 0
-          ? MODE_ORDER.map((mode) => {
-              const rows = byMode.get(mode) ?? []
-              if (rows.length === 0) return null
-              return (
-                <div key={mode} className="mb-6 last:mb-0">
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">
-                    {MODE_LABEL[mode]}
-                  </h3>
-                  <ul className="space-y-2">
-                    {rows.map((row, idx) => {
-                      const routeMeta =
-                        isAuthenticated && favoriteSet.has(row.route_id)
-                          ? favoriteByRouteId.get(row.route_id)
-                          : undefined
-                      return (
-                        <li
-                          key={`${mode}-${row.route_id}-${idx}`}
-                          className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-700/60 bg-slate-950/40 px-3 py-2.5"
-                        >
-                          <button
-                            type="button"
-                            disabled={!isAuthenticated}
-                            onClick={() => {
-                              onClearFavoritesError()
-                              const displayName =
-                                row.route_long_name ??
-                                row.route_short_name ??
-                                `Route ${row.route_id}`
-                              void onToggleFavorite(row.route_id, displayName)
-                            }}
-                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm font-bold transition-colors ${
-                              favoriteSet.has(row.route_id)
-                                ? "border-amber-500/80 bg-amber-900/40 text-amber-100"
-                                : "border-slate-600 bg-slate-800/80 text-slate-400 hover:border-slate-500"
-                            } disabled:cursor-not-allowed disabled:opacity-40`}
-                            title={
-                              isAuthenticated
-                                ? favoriteSet.has(row.route_id)
-                                  ? "Remove from favorites"
-                                  : "Add to favorites"
-                                : "Sign in to save favorites"
-                            }
-                            aria-pressed={favoriteSet.has(row.route_id)}
-                            aria-label={
-                              favoriteSet.has(row.route_id)
-                                ? `Unfavorite route ${row.route_id}`
-                                : `Favorite route ${row.route_id}`
-                            }
-                          >
-                            {favoriteSet.has(row.route_id) ? "★" : "☆"}
-                          </button>
-                          {routeMeta !== undefined ? (
-                            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-slate-600/80 bg-slate-900/80 px-2 py-1 text-[10px] font-medium text-slate-400">
-                              <input
-                                type="checkbox"
-                                className="h-3.5 w-3.5 rounded border-slate-500 bg-slate-950 text-sky-500 focus:ring-sky-500"
-                                checked={routeMeta.alerts_enabled}
-                                onChange={(e) => {
-                                  onClearFavoritesError()
-                                  void onToggleRouteAlerts(routeMeta.id, e.target.checked)
-                                }}
-                                aria-label={`In-app alerts for route ${row.route_id}`}
-                              />
-                              Alerts
-                            </label>
-                          ) : null}
-                          <span className="flex h-8 min-w-8 items-center justify-center rounded-md bg-slate-800 px-2 text-sm font-bold text-slate-100">
-                            {row.route_id}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-slate-200">
-                              {row.route_long_name ||
-                                row.route_short_name ||
-                                `Route ${row.route_id}`}
-                            </p>
-                            <p className="text-xs text-slate-400">{row.summary}</p>
-                          </div>
-                          <span
-                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset ${severityClasses(row.severity)}`}
-                          >
-                            {severityLabel(row.severity)}
-                          </span>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              )
-            })
-          : null}
+        {MODE_ORDER.map((mode) => {
+          const rows = byMode.get(mode) ?? []
+          if (rows.length === 0) return null
+          return (
+            <div key={mode} style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#334155', marginBottom: 6, paddingBottom: 4, borderBottom: '1px solid #1e2d45' }}>
+                {MODE_LABEL[mode]}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {rows.map((row, idx) => {
+                  const sev = SEVERITY_STYLE[row.severity] ?? SEVERITY_STYLE.unknown
+                  const routeMeta = isAuthenticated && favoriteSet.has(row.route_id) ? favoriteByRouteId.get(row.route_id) : undefined
+                  const isFav = favoriteSet.has(row.route_id)
+
+                  return (
+                    <div
+                      key={`${mode}-${row.route_id}-${idx}`}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#0a0e1a', border: '1px solid #1e2d45' }}
+                    >
+                      {/* Favorite star */}
+                      <button
+                        type="button"
+                        disabled={!isAuthenticated}
+                        onClick={() => {
+                          onClearFavoritesError()
+                          onToggleFavorite(row.route_id, row.route_long_name ?? row.route_short_name ?? `Route ${row.route_id}`)
+                        }}
+                        title={isAuthenticated ? (isFav ? 'Remove from favorites' : 'Add to favorites') : 'Sign in to save favorites'}
+                        aria-pressed={isFav}
+                        style={{
+                          background: 'none', border: 'none', cursor: isAuthenticated ? 'pointer' : 'not-allowed',
+                          color: isFav ? '#f59e0b' : '#334155', fontSize: 14, padding: 0, lineHeight: 1,
+                          opacity: isAuthenticated ? 1 : 0.4, flexShrink: 0,
+                        }}
+                      >
+                        {isFav ? '★' : '☆'}
+                      </button>
+
+                      {/* Alerts toggle */}
+                      {routeMeta !== undefined && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#64748b', cursor: 'pointer', flexShrink: 0 }}>
+                          <input
+                            type="checkbox"
+                            checked={routeMeta.alerts_enabled}
+                            onChange={(e) => { onClearFavoritesError(); onToggleRouteAlerts(routeMeta.id, e.target.checked) }}
+                            style={{ accentColor: '#3b82f6', width: 12, height: 12 }}
+                          />
+                          Alerts
+                        </label>
+                      )}
+
+                      {/* Route ID badge */}
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', background: '#1e2d45', padding: '2px 7px', flexShrink: 0, minWidth: 28, textAlign: 'center' }}>
+                        {row.route_id}
+                      </span>
+
+                      {/* Name + summary */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {row.route_long_name || row.route_short_name || `Route ${row.route_id}`}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {row.summary}
+                        </div>
+                      </div>
+
+                      {/* Status badge */}
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', background: sev.bg, color: sev.color, flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {sev.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </section>
   )

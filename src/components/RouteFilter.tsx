@@ -7,79 +7,75 @@ interface RouteFilterProps {
   onClear: () => void
 }
 
-export function RouteFilter({
-  routeIds,
-  selectedRouteIds,
-  search,
-  onSearchChange,
-  onToggleRoute,
-  onClear,
-}: RouteFilterProps) {
+export function RouteFilter({ routeIds, selectedRouteIds, search, onSearchChange, onToggleRoute, onClear }: RouteFilterProps) {
   const selected = new Set(selectedRouteIds)
   const q = search.trim().toLowerCase()
-  const visibleIds = routeIds.filter((id) => {
-    if (!q) return true
-    return id.toLowerCase().includes(q)
-  })
+  const visibleIds = routeIds.filter((id) => !q || id.toLowerCase().includes(q))
 
   return (
     <section
-      className="rounded-xl border border-slate-700/80 bg-slate-900/60 p-4 shadow-lg backdrop-blur-sm"
-      aria-label="Filter by GTFS route"
+      style={{ background: '#0f1623', border: '1px solid #1e2d45', padding: '14px 16px' }}
+      aria-label="Filter by route"
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold tracking-wide text-slate-300">
-          Routes <span className="font-normal text-slate-500">(GTFS route_id)</span>
-        </h2>
-        {selectedRouteIds.length > 0 ? (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+          Filter Routes
+        </span>
+        {selectedRouteIds.length > 0 && (
           <button
             type="button"
             onClick={onClear}
-            className="text-xs font-medium text-sky-400 hover:text-sky-300"
+            style={{ fontSize: 11, color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
           >
-            Clear filters
+            Clear ({selectedRouteIds.length})
           </button>
-        ) : null}
+        )}
       </div>
-      <label className="mb-3 block text-xs text-slate-500" htmlFor="route-search">
-        Search route id or name
-      </label>
+
       <input
         id="route-search"
         type="search"
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
-        placeholder="e.g. C, F, 1, B44…"
-        className="mb-3 w-full rounded-lg border border-slate-600 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        placeholder="Search route (e.g. A, F, 1, B44)"
+        style={{
+          width: '100%', boxSizing: 'border-box', background: '#0a0e1a',
+          border: '1px solid #1e2d45', color: '#e2e8f0', fontSize: 13,
+          padding: '7px 10px', outline: 'none', marginBottom: 10,
+          borderRadius: 0,
+        }}
       />
-      <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 120, overflowY: 'auto' }}>
         {visibleIds.length === 0 ? (
-          <p className="text-sm text-slate-500">No routes match.</p>
-        ) : (
-          visibleIds.map((id) => {
-            const isOn = selected.has(id)
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => onToggleRoute(id)}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                  isOn
-                    ? 'border-sky-500 bg-sky-600/30 text-sky-100'
-                    : 'border-slate-600 bg-slate-800/80 text-slate-300 hover:border-slate-500'
-                }`}
-                aria-pressed={isOn}
-              >
-                {id}
-              </button>
-            )
-          })
-        )}
+          <span style={{ fontSize: 12, color: '#475569' }}>No routes match.</span>
+        ) : visibleIds.map((id) => {
+          const isOn = selected.has(id)
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onToggleRoute(id)}
+              aria-pressed={isOn}
+              style={{
+                fontSize: 11, fontWeight: 600, padding: '3px 10px',
+                border: isOn ? '1px solid #3b82f6' : '1px solid #1e2d45',
+                background: isOn ? '#1e3a5f' : '#0a0e1a',
+                color: isOn ? '#93c5fd' : '#94a3b8',
+                cursor: 'pointer', borderRadius: 0,
+                transition: 'all 0.1s',
+              }}
+            >
+              {id}
+            </button>
+          )
+        })}
       </div>
-      <p className="mt-3 text-xs text-slate-500">
+
+      <p style={{ marginTop: 8, fontSize: 11, color: '#334155' }}>
         {selectedRouteIds.length === 0
-          ? 'Showing all routes. Tap routes to narrow the list and map.'
-          : `Filtering ${selectedRouteIds.length} route(s).`}
+          ? 'All routes shown. Select to filter.'
+          : `${selectedRouteIds.length} route(s) selected.`}
       </p>
     </section>
   )
