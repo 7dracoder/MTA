@@ -11,6 +11,29 @@ import {
 } from "../lib/apiAuth"
 import type { FavoriteRecord } from "../types/userPreferences"
 
+/** User-facing text when Flask returns 503 because Admin SDK never started. */
+function favoritesAuthNotConfiguredMessage(): string {
+  return [
+    "Firebase Admin is not configured on the Flask server (503).",
+    "Download a service account JSON key from Firebase Console → Project settings → Service accounts,",
+    "save it as backend/firebase-service-account.json (default), or set FIREBASE_CREDENTIALS_PATH in backend/.env,",
+    "then restart the API (python run.py).",
+  ].join(" ")
+}
+
+function formatFavoritesLoadError(e: unknown): string {
+  if (e instanceof UserApiError && e.status === 503) {
+    return favoritesAuthNotConfiguredMessage()
+  }
+  const msg =
+    e instanceof UserApiError
+      ? e.message
+      : e instanceof Error
+        ? e.message
+        : "Could not load favorites."
+  return `${msg} Ensure Flask is running and accepts Bearer tokens on GET /api/favorites (see docs/BACKEND_INTEGRATION.md).`
+}
+
 function routeDisplayName(routeId: string, longName?: string, shortName?: string): string {
   const a = longName?.trim()
   const b = shortName?.trim()
@@ -105,15 +128,7 @@ export function useFavorites(
         }
       } catch (e) {
         if (!cancelled) {
-          const msg =
-            e instanceof UserApiError
-              ? e.message
-              : e instanceof Error
-                ? e.message
-                : "Could not load favorites."
-          setError(
-            `${msg} Ensure Flask is running and accepts Bearer tokens on GET /api/favorites (see docs/BACKEND_INTEGRATION.md).`,
-          )
+          setError(formatFavoritesLoadError(e))
           setRecords([])
         }
       } finally {
@@ -157,11 +172,13 @@ export function useFavorites(
         } catch (e) {
           setRecords(prevRecords)
           const msg =
-            e instanceof UserApiError
-              ? e.message
-              : e instanceof Error
+            e instanceof UserApiError && e.status === 503
+              ? favoritesAuthNotConfiguredMessage()
+              : e instanceof UserApiError
                 ? e.message
-                : "Could not remove favorite."
+                : e instanceof Error
+                  ? e.message
+                  : "Could not remove favorite."
           setError(msg)
         }
         return
@@ -186,11 +203,13 @@ export function useFavorites(
           return
         }
         const msg =
-          e instanceof UserApiError
-            ? e.message
-            : e instanceof Error
+          e instanceof UserApiError && e.status === 503
+            ? favoritesAuthNotConfiguredMessage()
+            : e instanceof UserApiError
               ? e.message
-              : "Could not add favorite."
+              : e instanceof Error
+                ? e.message
+                : "Could not add favorite."
         setError(msg)
       }
     },
@@ -220,11 +239,13 @@ export function useFavorites(
       } catch (e) {
         setRecords(prevRecords)
         const msg =
-          e instanceof UserApiError
-            ? e.message
-            : e instanceof Error
+          e instanceof UserApiError && e.status === 503
+            ? favoritesAuthNotConfiguredMessage()
+            : e instanceof UserApiError
               ? e.message
-              : "Could not update alerts."
+              : e instanceof Error
+                ? e.message
+                : "Could not update alerts."
         setError(msg)
       }
     },

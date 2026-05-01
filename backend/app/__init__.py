@@ -16,6 +16,11 @@ def create_app(test_config: dict = None):
     db.init_app(app)
 
     with app.app_context():
+        # Import models so SQLAlchemy metadata includes all tables before create_all().
+        # Blueprint imports happen below; without this, create_all() runs on empty metadata
+        # and you get "no such table: service_status" at runtime.
+        from . import models  # noqa: F401
+
         db.create_all()
 
     init_firebase()

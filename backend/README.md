@@ -9,7 +9,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.enc .env            # fill in MTA_API_KEY and FIREBASE_CREDENTIALS_PATH
+Create `backend/.env` with at least `MTA_API_KEY` (see Environment Variables). Add Firebase Admin by placing **`firebase-service-account.json`** in the `backend/` folder (same directory as `run.py`) or set **`FIREBASE_CREDENTIALS_PATH`** to the JSON file path.
 ```
 
 ## Run
@@ -25,7 +25,7 @@ API available at `http://localhost:5000`.
 | Variable | Description |
 |---|---|
 | `MTA_API_KEY` | Your MTA API key from https://api.mta.info |
-| `FIREBASE_CREDENTIALS_PATH` | Path to Firebase service account JSON |
+| `FIREBASE_CREDENTIALS_PATH` | Path to Firebase **service account** JSON (Admin SDK). Default: `firebase-service-account.json` next to `run.py`. Required for `/api/favorites` and other authenticated routes. |
 | `SECRET_KEY` | Flask secret key (any random string) |
 | `DATABASE_URL` | SQLite path (default: `sqlite:///mta_transit.db`) |
 
